@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#4f46e5" />
+  <rect x="96" y="140" width="320" height="276" rx="28" fill="#ffffff" />
+  <path d="M96 140 H416 V220 H96 Z" fill="#e0e7ff" />
+  <rect x="156" y="90" width="28" height="64" rx="14" fill="#312e81" />
+  <rect x="328" y="90" width="28" height="64" rx="14" fill="#312e81" />
+  <!-- 체크 마크 -->
+  <path d="M190 310 L235 355 L325 265" stroke="#4f46e5" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+</svg>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+	<meta charset="UTF-8">
+
+	<!-- HTML 캐시 무효화 메타 태그 -->
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+	<meta http-equiv="Pragma" content="no-cache">
+	<meta http-equiv="Expires" content="0">
+
+	<meta name="viewport"
+		content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+	<title>일정공유 | ScheduleShare</title>
+
+	<!-- PWA Web App Manifest -->
+	<link rel="manifest" href="manifest.json">
+
+	<!-- Android / Chrome Theme Color -->
+	<meta name="theme-color" content="#4f46e5">
+
+	<!-- iOS Safari PWA Settings -->
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<meta name="apple-mobile-web-app-title" content="일정공유">
+
+	<!-- 파비콘 및 홈 아이콘 (단일 SVG 연결) -->
+	<link rel="icon" type="image/svg+xml" href="./icon.svg?v=1.0.4">
+	<link rel="apple-touch-icon" href="./icon.svg?v=1.0.4">
+
+	<!-- FullCalendar v6 최신 통합 CDN (interaction 포함) -->
+	<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+	
+	<!-- CSS 및 JS 연결 (버전 업데이트로 모바일 강제 갱신) -->
+	<link rel="stylesheet" href="style.css?v=1.0.5">
+	<script type="module" src="app.js?v=1.0.5"></script>
+</head>
+
+<body>
+
+	<!-- 1. 인증 화면 오버레이 -->
+	<div id="auth-overlay">
+		<!-- 초기: 인증 확인 중 뷰 -->
+		<div id="auth-loading-box" class="auth-loading-box">
+			<div class="auth-spinner"></div>
+			<div class="auth-loading-text">사용자 인증 확인 중...</div>
+		</div>
+
+		<!-- 비로그인 시 노출될 로그인 폼 -->
+		<div id="auth-login-box" class="auth-box is-hidden">
+			<div class="auth-title">일정공유 로그인</div>
+			<div class="form-group">
+				<label class="form-label" for="login-email">아이디</label>
+				<input type="text" id="login-email" class="form-control" placeholder="아이디 입력 (예: admin)"
+					autocomplete="username">
+			</div>
+			<div class="form-group">
+				<label class="form-label" for="login-password">비밀번호</label>
+				<input type="password" id="login-password" class="form-control" placeholder="••••••••"
+					autocomplete="current-password">
+			</div>
+			<button class="btn btn-primary" id="btn-login" style="padding: 12px;">로그인</button>
+			<div id="login-error" class="error-msg is-hidden"></div>
+		</div>
+	</div>
+
+	<!-- 2. 상단 헤더 (버튼 색상 적용) -->
+	<header>
+		<div class="brand-title">
+			<span>📅</span>
+			<span>일정공유</span>
+		</div>
+		<div class="user-actions">
+			<span id="current-user-display"></span>
+			<button class="btn btn-secondary" id="btn-profile">설정</button>
+			<button class="btn btn-danger-outline" id="btn-logout">로그아웃</button>
+		</div>
+	</header>
+
+	<!-- 3. 실시간 통계 바 -->
+	<div class="summary-bar">
+		<div class="summary-card">
+			<span class="summary-label">이번 달 내 일정</span>
+			<span class="summary-value" id="stat-my-count">0건</span>
+		</div>
+		<div class="summary-card">
+			<span class="summary-label">이번 달 팀 전체 일정</span>
+			<span class="summary-value" id="stat-team-count">0건</span>
+		</div>
+	</div>
+
+	<!-- 4. 캘린더 영역 -->
+	<div id="calendar-container">
+		<div id="calendar"></div>
+	</div>
+
+	<!-- 5. 날짜 클릭 상세 모달 (상/하 2단 구조) -->
+	<div class="modal-backdrop" id="schedule-modal">
+		<div class="modal-sheet">
+			<div class="modal-header">
+				<div class="modal-title" id="modal-date-title">일정 상세</div>
+				<button class="modal-close" id="modal-close">&times;</button>
+			</div>
+			<div class="modal-body">
+				<!-- 상단: 팀원 일정 목록 조회 -->
+				<div>
+					<div class="form-label mb-8">팀원 일정 목록</div>
+					<div class="member-schedule-list" id="team-schedule-list"></div>
+				</div>
+
+				<div class="modal-divider"></div>
+
+				<!-- 하단: 내 일정 등록/수정 폼 -->
+				<div>
+					<div class="form-label mb-8" id="my-form-title">새 일정 추가</div>
+					<div class="form-group mb-8">
+						<label class="form-label">구분</label>
+						<select id="schedule-category" class="form-control">
+							<option value="휴가">휴가</option>
+							<option value="출장">출장</option>
+							<option value="교육">교육</option>
+							<option value="기타">기타</option>
+						</select>
+					</div>
+					<div class="form-group mb-8">
+						<label class="form-label">메모 (선택사항)</label>
+						<textarea id="schedule-memo" class="form-control" rows="2"
+							placeholder="일정 상세나 사유를 입력하세요"></textarea>
+					</div>
+					<div class="form-actions" id="form-actions-create">
+						<button class="btn btn-primary" id="btn-save-schedule">일정 추가</button>
+					</div>
+					<div class="form-actions" id="form-actions-edit" style="display: none;">
+						<button class="btn btn-secondary" id="btn-cancel-edit">취소</button>
+						<button class="btn btn-primary" id="btn-update-schedule">수정 완료</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- 6. 계정 설정 모달 (스마트 비밀번호 확인창) -->
+	<div class="modal-backdrop" id="profile-modal">
+		<div class="modal-sheet">
+			<div class="modal-header">
+				<div class="modal-title">내 계정 관리</div>
+				<button class="modal-close" id="profile-modal-close">&times;</button>
+			</div>
+			<div class="modal-body">
+				<div class="form-group">
+					<label class="form-label">표시 이름 (닉네임)</label>
+					<input type="text" id="prof-displayname" class="form-control" placeholder="홍길동">
+				</div>
+				<div class="form-group">
+					<label class="form-label">내 아이디</label>
+					<input type="text" id="prof-userid" class="form-control" disabled
+						style="background-color: var(--bg); color: var(--text-muted);">
+				</div>
+				<div class="form-group">
+					<label class="form-label">새 비밀번호 (변경 시에만 입력)</label>
+					<input type="password" id="prof-new-pass" class="form-control" placeholder="6자리 이상">
+				</div>
+				<div class="modal-divider"></div>
+				<div class="form-group">
+					<label class="form-label" id="lbl-current-pass"
+						style="color: var(--text-muted); transition: color 0.2s;">현재 비밀번호 확인</label>
+					<input type="password" id="prof-current-pass" class="form-control" placeholder="새 비밀번호를 입력하면 활성화됩니다"
+						disabled>
+				</div>
+				<button class="btn btn-primary" id="btn-save-profile" style="padding: 12px; margin-top: 8px;">정보 변경
+					저장</button>
+				<div id="profile-status" class="status-msg"></div>
+			</div>
+		</div>
+	</div>
+</body>
+
+</html>

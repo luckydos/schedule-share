@@ -1,0 +1,19 @@
+{
+	"name": "일정공유 (ScheduleShare)",
+	"short_name": "일정공유",
+	"description": "소규모 팀을 위한 실시간 일정 및 휴가 공유 캘린더",
+	"start_url": "./index.html",
+	"scope": "./",
+	"display": "standalone",
+	"orientation": "portrait",
+	"background_color": "#f8fafc",
+	"theme_color": "#4f46e5",
+	"icons": [
+		{
+			"src": "icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any maskable"
+		}
+	]
+}
