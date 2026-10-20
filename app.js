@@ -65,6 +65,7 @@ const modalCloseBtn = document.getElementById("modal-close");
 const teamScheduleList = document.getElementById("team-schedule-list");
 const modalDateTitle = document.getElementById("modal-date-title");
 const myFormTitle = document.getElementById("my-form-title");
+const scheduleFormWrapper = document.getElementById("schedule-form-wrapper");
 const scheduleCategory = document.getElementById("schedule-category");
 const scheduleMemo = document.getElementById("schedule-memo");
 const formActionsCreate = document.getElementById("form-actions-create");
@@ -99,17 +100,14 @@ calendar = new FullCalendar.Calendar(calendarEl, {
 		today: "오늘"
 	},
 	height: "100%",
+	expandRows: true,
 	fixedWeekCount: false,
 	showNonCurrentDates: false,
-
-	// FullCalendar 내장 텍스트 선택/드래그 기능 완전 비활성화
 	selectable: false,
 	editable: false,
 	eventStartEditable: false,
 	longPressDelay: 0,
 	selectLongPressDelay: 0,
-
-	// dateClick 콜백은 사용하지 않고 순수 네이티브 이벤트로 대체
 	datesSet: function () {
 		updateTodayButtonState();
 		calculateStatistics();
@@ -121,30 +119,27 @@ calendar = new FullCalendar.Calendar(calendarEl, {
 
 calendar.render();
 
-// 🔥 [완벽한 우회 해결책]
-// FullCalendar가 터치를 가로채기 전에 pointerup 시점에 좌표를 분석해 즉시 모달 오픈
+// 🔥 원터치 인터셉트 감지기
 let clickStartX = 0;
 let clickStartY = 0;
 
 calendarEl.addEventListener("pointerdown", (e) => {
 	clickStartX = e.clientX;
 	clickStartY = e.clientY;
-}, { passive: true });
+}, { capture: true, passive: true });
 
 calendarEl.addEventListener("pointerup", (e) => {
-	// 상단 툴바(이전/다음 버튼 등)를 누른 경우는 제외
 	if (e.target.closest(".fc-toolbar")) return;
 
 	const moveX = Math.abs(e.clientX - clickStartX);
 	const moveY = Math.abs(e.clientY - clickStartY);
 
-	// 손가락을 거의 움직이지 않은 순수한 '클릭/탭(15px 미만 이동)'인 경우에만 즉시 실행
+	// 손가락을 거의 움직이지 않은 순수한 '클릭/탭(15px 미만 이동)'인 경우 즉시 모달 오픈
 	if (moveX < 15 && moveY < 15) {
 		const dayCell = e.target.closest(".fc-daygrid-day");
 		if (dayCell) {
 			const dateStr = dayCell.getAttribute("data-date");
 			if (dateStr && !scheduleModal.classList.contains("active")) {
-				// FullCalendar 드래그 락 및 기본 이벤트 전파 차단
 				e.stopPropagation();
 				e.preventDefault();
 				openScheduleModal(dateStr);
@@ -167,7 +162,7 @@ function updateTodayButtonState() {
 	todayBtn.disabled = isCurrentMonth;
 }
 
-// --- 3. 날짜 셀 배지 렌더링 ---
+// --- 3. 날짜 셀 배지 렌더링 (3개 기본 노출 및 중앙 정렬) ---
 function renderDayCellBadge(date, cellEl) {
 	const y = date.getFullYear();
 	const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -186,18 +181,37 @@ function renderDayCellBadge(date, cellEl) {
 		badgeContainer.className = "badge-container";
 
 		const entries = Object.values(record.entries || {});
-		const vacationCount = entries.filter((e) => e.category === "휴가").length;
 
-		let badgeText = `총 ${record.totalCount}건`;
-		if (vacationCount > 0 && vacationCount === record.totalCount) {
-			badgeText = `휴가 ${vacationCount}`;
+		// 기본 카테고리 우선순위 정렬 집계
+		const categories = ["휴가", "출장", "교육", "기타"];
+		const activeBadges = [];
+
+		categories.forEach(cat => {
+			const count = entries.filter(e => e.category === cat).length;
+			if (count > 0) {
+				activeBadges.push({ category: cat, count: count });
+			}
+		});
+
+		// 3개(휴가, 출장, 교육 등)까지 기본 출력, 4개부터 축약(+N)
+		const MAX_VISIBLE = 3;
+		const displayBadges = activeBadges.slice(0, MAX_VISIBLE);
+		const overflowCount = activeBadges.length - MAX_VISIBLE;
+
+		displayBadges.forEach(b => {
+			const pill = document.createElement("span");
+			pill.className = `pill-badge cat-${b.category}`;
+			pill.innerText = `${b.category} ${b.count}`;
+			badgeContainer.appendChild(pill);
+		});
+
+		// 4개 이상일 때 +N 배지 표시
+		if (overflowCount > 0) {
+			const morePill = document.createElement("span");
+			morePill.className = "pill-badge cat-more";
+			morePill.innerText = `+${overflowCount}`;
+			badgeContainer.appendChild(morePill);
 		}
-
-		const pill = document.createElement("span");
-		pill.className = "pill-badge";
-		pill.innerText = badgeText;
-
-		badgeContainer.appendChild(pill);
 
 		const frameEl = cellEl.querySelector(".fc-daygrid-day-frame");
 		if (frameEl) {
@@ -244,7 +258,7 @@ function calculateStatistics() {
 	document.getElementById("stat-team-count").innerText = `${teamCount}건`;
 }
 
-// --- 5. Firestore 실시간 동기화 (일정 및 팀원 전체 프로필) ---
+// --- 5. Firestore 실시간 동기화 ---
 function subscribeSchedules() {
 	if (unsubscribeFirestore) unsubscribeFirestore();
 
@@ -277,7 +291,6 @@ function subscribeTeamUsers() {
 		snapshot.forEach((docSnap) => {
 			teamUsersMap[docSnap.id] = docSnap.data();
 		});
-		// 프로필 변경 시 현재 열린 모달 목록 및 배지 즉시 갱신
 		if (selectedDateStr && scheduleModal.classList.contains("active")) {
 			renderModalDetail(selectedDateStr);
 		}
@@ -296,7 +309,6 @@ function setButtonLoading(btn, isLoading, loadingText = "처리 중...", origina
 	}
 }
 
-// 시간 문자열 포맷팅 (예: 14:25 또는 오전 09:10)
 function formatTimeString(isoString) {
 	if (!isoString) return "";
 	try {
@@ -312,18 +324,48 @@ function formatTimeString(isoString) {
 	}
 }
 
-// --- 7. 날짜 상세 모달 상호작용 (다중 일정 & 시간 & 닉네임 동기화 & 중복 수정 방지) ---
+// 공통 모달 열기/닫기 애니메이션 제어
+function showModalWithAnimation(modalEl) {
+	modalEl.classList.add("is-open");
+	requestAnimationFrame(() => {
+		requestAnimationFrame(() => {
+			modalEl.classList.add("active");
+		});
+	});
+}
+
+function hideModalWithAnimation(modalEl, onComplete) {
+	modalEl.classList.remove("active");
+	setTimeout(() => {
+		modalEl.classList.remove("is-open");
+		if (onComplete) onComplete();
+	}, 260);
+}
+
+// --- 7. 날짜 상세 모달 상호작용 ---
 function openScheduleModal(dateStr) {
 	selectedDateStr = dateStr;
 	modalDateTitle.innerText = `${dateStr} 일정`;
 	renderModalDetail(dateStr);
-	scheduleModal.classList.add("active");
+
+	// 모바일 Ghost Click 방지
+	scheduleFormWrapper.style.pointerEvents = "none";
+	setTimeout(() => {
+		scheduleFormWrapper.style.pointerEvents = "auto";
+	}, 200);
+
+	showModalWithAnimation(scheduleModal);
+
+	if (document.activeElement) {
+		document.activeElement.blur();
+	}
 }
 
 function closeScheduleModal() {
-	scheduleModal.classList.remove("active");
-	selectedDateStr = null;
-	resetScheduleForm();
+	hideModalWithAnimation(scheduleModal, () => {
+		selectedDateStr = null;
+		resetScheduleForm();
+	});
 }
 
 function resetScheduleForm() {
@@ -333,15 +375,43 @@ function resetScheduleForm() {
 	scheduleMemo.value = "";
 	formActionsCreate.style.display = "flex";
 	formActionsEdit.style.display = "none";
+
+	// 목록의 모든 카드에서 수정 중 하이라이트 해제 및 버튼 복원
+	document.querySelectorAll(".schedule-item").forEach((item) => {
+		item.classList.remove("is-editing");
+		const editBtn = item.querySelector(".btn-item-edit");
+		if (editBtn) {
+			editBtn.textContent = "수정";
+			editBtn.disabled = false;
+		}
+	});
 }
 
 function setFormToEditMode(entry) {
-	editingEntryId = entry.id; // 수정할 대상 식별자 고정
+	editingEntryId = entry.id;
 	myFormTitle.textContent = "선택한 일정 수정";
 	scheduleCategory.value = entry.category || "휴가";
 	scheduleMemo.value = entry.title || "";
 	formActionsCreate.style.display = "none";
 	formActionsEdit.style.display = "flex";
+
+	// 상단 카드 목록 시각 피드백: 선택된 카드 배경 틴트 전환 및 버튼 텍스트 변경
+	document.querySelectorAll(".schedule-item").forEach((item) => {
+		const isTarget = item.getAttribute("data-entry-id") === String(entry.id);
+		item.classList.toggle("is-editing", isTarget);
+
+		const editBtn = item.querySelector(".btn-item-edit");
+		if (editBtn) {
+			if (isTarget) {
+				editBtn.textContent = "수정 중";
+				editBtn.disabled = true;
+			} else {
+				editBtn.textContent = "수정";
+				editBtn.disabled = false;
+			}
+		}
+	});
+
 	scheduleMemo.focus();
 }
 
@@ -351,7 +421,6 @@ function renderModalDetail(dateStr) {
 	resetScheduleForm();
 
 	if (record && record.entries && Object.keys(record.entries).length > 0) {
-		// 과거 데이터 호환: 객체 키값을 id로 승격하여 중복 생성 방지
 		const entriesList = Object.entries(record.entries).map(([key, item]) => {
 			return {
 				...item,
@@ -359,7 +428,6 @@ function renderModalDetail(dateStr) {
 			};
 		});
 
-		// 등록 시간순 정렬
 		entriesList.sort((a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0));
 
 		entriesList.forEach((entry) => {
@@ -367,9 +435,10 @@ function renderModalDetail(dateStr) {
 
 			const item = document.createElement("div");
 			item.className = "schedule-item";
+			item.setAttribute("data-entry-id", String(entry.id));
+
 			if (isMyEntry) {
-				item.style.borderColor = "var(--primary)";
-				item.style.backgroundColor = "var(--surface)";
+				item.style.borderColor = "#c7d2fe"; // 본인 일정은 부드러운 테두리 유지
 			}
 
 			const headerDiv = document.createElement("div");
@@ -377,17 +446,16 @@ function renderModalDetail(dateStr) {
 			headerDiv.style.justifyContent = "space-between";
 			headerDiv.style.alignItems = "center";
 
-			// [배지] [이름] [시간] 순서로 재배치
 			const metaDiv = document.createElement("div");
 			metaDiv.className = "schedule-meta";
 
-			// 1. 구분 배지 (맨 왼쪽)
+			// 1. 구분 배지
 			const tagSpan = document.createElement("span");
 			tagSpan.className = "tag tag-" + (entry.category || "기타");
 			tagSpan.textContent = entry.category || "기타";
 			metaDiv.appendChild(tagSpan);
 
-			// 2. 팀원 이름 (가운데)
+			// 2. 팀원 이름 (최신 닉네임 실시간 매핑)
 			const userProfile = teamUsersMap[entry.userId];
 			const latestName = (userProfile && userProfile.displayName) || entry.userName || (entry.userId ? entry.userId : "팀원");
 
@@ -396,7 +464,7 @@ function renderModalDetail(dateStr) {
 			nameSpan.textContent = latestName + (isMyEntry ? " (나)" : "");
 			metaDiv.appendChild(nameSpan);
 
-			// 3. 등록/수정 시간 (오른쪽 보조)
+			// 3. 등록/수정 시간
 			const timeFormatted = formatTimeString(entry.updatedAt);
 			if (timeFormatted) {
 				const timeSpan = document.createElement("span");
@@ -414,7 +482,7 @@ function renderModalDetail(dateStr) {
 				actionGroup.style.gap = "6px";
 
 				const editBtn = document.createElement("button");
-				editBtn.className = "btn";
+				editBtn.className = "btn btn-item-edit";
 				editBtn.style.padding = "2px 8px";
 				editBtn.style.fontSize = "0.75rem";
 				editBtn.textContent = "수정";
@@ -440,13 +508,16 @@ function renderModalDetail(dateStr) {
 
 			item.appendChild(headerDiv);
 
+			// 메모 내용
+			const memoDiv = document.createElement("div");
+			memoDiv.className = "schedule-memo";
 			if (entry.title && entry.title.trim() !== "") {
-				const memoDiv = document.createElement("div");
-				memoDiv.className = "schedule-memo";
 				memoDiv.textContent = entry.title;
-				memoDiv.style.marginTop = "6px";
-				item.appendChild(memoDiv);
+			} else {
+				memoDiv.textContent = "작성된 메모가 없습니다.";
+				memoDiv.classList.add("empty");
 			}
+			item.appendChild(memoDiv);
 
 			teamScheduleList.appendChild(item);
 		});
@@ -455,7 +526,7 @@ function renderModalDetail(dateStr) {
 	}
 }
 
-// 일정 추가 및 수정 처리 (중복 추가 완전 차단)
+// 일정 추가 및 수정 처리
 async function saveSchedule(event) {
 	if (!currentUser || !selectedDateStr) return;
 
@@ -469,7 +540,6 @@ async function saveSchedule(event) {
 	const recordRef = doc(db, "schedules", "group", "records", selectedDateStr);
 	const existingRecord = scheduleRecords[selectedDateStr] || { totalCount: 0, entries: {} };
 
-	// 수정 중이면 기존 entryId 유지, 신규 추가면 새 고유 ID 생성
 	const isNew = !editingEntryId;
 	const entryId = editingEntryId || `entry_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
@@ -545,35 +615,29 @@ btnUpdateSchedule.addEventListener("click", saveSchedule);
 btnCancelEdit.addEventListener("click", resetScheduleForm);
 modalCloseBtn.addEventListener("click", closeScheduleModal);
 
-// 모달 외부(배경) 클릭 시 닫기
-scheduleModal.addEventListener("click", (e) => {
-	let mousedownTarget = null;
+// 모달 외부(백드롭) 클릭 시 닫기
+let modalMousedownTarget = null;
+scheduleModal.addEventListener("mousedown", (e) => {
+	modalMousedownTarget = e.target;
+});
+scheduleModal.addEventListener("touchstart", (e) => {
+	modalMousedownTarget = e.target;
+}, { passive: true });
 
-	// 1. 클릭/터치가 '시작된' 타겟이 백드롭(바깥 영역)인지 기록
-	scheduleModal.addEventListener("mousedown", (e) => {
-		mousedownTarget = e.target;
-	});
-	scheduleModal.addEventListener("touchstart", (e) => {
-		mousedownTarget = e.target;
-	}, { passive: true });
-
-	// 2. 마우스/손가락을 '뗄 때'의 타겟과 시작점 모두 백드롭일 때만 모달 닫기
-	scheduleModal.addEventListener("mouseup", (e) => {
-		if (mousedownTarget === scheduleModal && e.target === scheduleModal) {
-			closeScheduleModal();
-		}
-		mousedownTarget = null;
-	});
-
-	scheduleModal.addEventListener("touchend", (e) => {
-		if (mousedownTarget === scheduleModal && e.target === scheduleModal) {
-			closeScheduleModal();
-		}
-		mousedownTarget = null;
-	});
+scheduleModal.addEventListener("mouseup", (e) => {
+	if (modalMousedownTarget === scheduleModal && e.target === scheduleModal) {
+		closeScheduleModal();
+	}
+	modalMousedownTarget = null;
+});
+scheduleModal.addEventListener("touchend", (e) => {
+	if (modalMousedownTarget === scheduleModal && e.target === scheduleModal) {
+		closeScheduleModal();
+	}
+	modalMousedownTarget = null;
 });
 
-// --- 8. 사용자 프로필 및 계정 설정 (스마트 비밀번호 제어) ---
+// --- 8. 사용자 프로필 및 계정 설정 ---
 async function loadUserProfile(uid) {
 	try {
 		const userDocRef = doc(db, "users", uid);
@@ -593,7 +657,6 @@ async function loadUserProfile(uid) {
 	}
 }
 
-// 새 비밀번호 입력 여부에 따른 현재 비밀번호 확인창 활성화 제어
 function toggleCurrentPasswordField() {
 	const hasNewPass = profNewPass.value.trim().length > 0;
 
@@ -622,20 +685,36 @@ btnProfile.addEventListener("click", () => {
 	profCurrentPass.value = "";
 	toggleCurrentPasswordField();
 	profileStatus.innerText = "";
-	profileModal.classList.add("active");
+	showModalWithAnimation(profileModal);
 });
 
 profileModalClose.addEventListener("click", () => {
-	profileModal.classList.remove("active");
+	hideModalWithAnimation(profileModal);
 });
 
-profileModal.addEventListener("click", (e) => {
-	if (e.target === profileModal) {
-		profileModal.classList.remove("active");
+// 설정 모달 외부 클릭 시 닫기
+let profileMousedownTarget = null;
+profileModal.addEventListener("mousedown", (e) => {
+	profileMousedownTarget = e.target;
+});
+profileModal.addEventListener("touchstart", (e) => {
+	profileMousedownTarget = e.target;
+}, { passive: true });
+
+profileModal.addEventListener("mouseup", (e) => {
+	if (profileMousedownTarget === profileModal && e.target === profileModal) {
+		hideModalWithAnimation(profileModal);
 	}
+	profileMousedownTarget = null;
+});
+profileModal.addEventListener("touchend", (e) => {
+	if (profileMousedownTarget === profileModal && e.target === profileModal) {
+		hideModalWithAnimation(profileModal);
+	}
+	profileMousedownTarget = null;
 });
 
-// 설정 저장 (닉네임 단독 수정 가능 / 비밀번호 변경 시에만 재인증)
+// 설정 저장
 btnSaveProfile.addEventListener("click", async () => {
 	const displayName = profDisplayName.value.trim();
 	const newPass = profNewPass.value;
@@ -675,7 +754,7 @@ btnSaveProfile.addEventListener("click", async () => {
 		profileStatus.innerText = "저장되었습니다.";
 
 		setTimeout(() => {
-			profileModal.classList.remove("active");
+			hideModalWithAnimation(profileModal);
 		}, 700);
 	} catch (err) {
 		console.error("설정 수정 오류:", err);
@@ -688,13 +767,13 @@ btnSaveProfile.addEventListener("click", async () => {
 	}
 });
 
-// --- 9. 인증 상태 리스너 (단일화) ---
+// --- 9. 인증 상태 리스너 ---
 onAuthStateChanged(auth, async (user) => {
 	if (user) {
 		currentUser = user;
 		await loadUserProfile(user.uid);
-		subscribeTeamUsers(); // 팀원 프로필 실시간 동기화
-		subscribeSchedules(); // 일정 실시간 동기화
+		subscribeTeamUsers();
+		subscribeSchedules();
 
 		authOverlay.classList.add("is-hidden");
 
@@ -756,7 +835,6 @@ btnLogin.addEventListener("click", async () => {
 	}
 });
 
-// 엔터 키 로그인 연동
 const triggerLoginOnEnter = (event) => {
 	if (event.key === "Enter") {
 		event.preventDefault();
@@ -766,7 +844,6 @@ const triggerLoginOnEnter = (event) => {
 loginEmailInput.addEventListener("keydown", triggerLoginOnEnter);
 loginPasswordInput.addEventListener("keydown", triggerLoginOnEnter);
 
-// 로그아웃
 btnLogout.addEventListener("click", () => {
 	signOut(auth);
 });

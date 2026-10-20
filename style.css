@@ -38,7 +38,7 @@ body {
 	overflow: hidden;
 }
 
-/* 상단 네비게이션 헤더 (Safe Area 여백 대응) */
+/* 상단 네비게이션 헤더 */
 header {
 	background-color: var(--surface);
 	border-bottom: 1px solid var(--border);
@@ -176,8 +176,6 @@ header {
 	overflow: hidden;
 	position: relative;
 	touch-action: manipulation;
-	-webkit-user-select: none;
-	user-select: none;
 }
 
 #calendar {
@@ -218,17 +216,22 @@ header {
 	padding: 2px 4px;
 }
 
-/* 날짜 칸 자체에 터치/클릭 우선권 부여 */
-.fc-daygrid-day {
-	cursor: pointer !important;
-	touch-action: manipulation !important;
+/* 오늘 날짜 테두리 강조 */
+.fc .fc-daygrid-day.fc-day-today {
+	background-color: rgba(79, 70, 229, 0.05) !important;
+	box-shadow: inset 0 0 0 2px var(--primary) !important;
 }
 
-/* 날짜 칸 및 내부 프레임이 정상적으로 터치/클릭을 받도록 복원 */
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+	font-weight: 700;
+	color: var(--primary);
+}
+
+/* 날짜 칸 터치 우선권 보장 */
 .fc-daygrid-day,
 .fc-daygrid-day-frame {
-	cursor: pointer;
-	touch-action: manipulation;
+	cursor: pointer !important;
+	touch-action: manipulation !important;
 }
 
 /* 일정이 있는 날 배경 틴트 */
@@ -236,47 +239,124 @@ header {
 	background-color: rgba(79, 70, 229, 0.04) !important;
 }
 
-/* 셀 내 알약 뱃지 */
+
+/* FullCalendar 기본 이벤트 컨테이너 크기 조정 */
+.fc-daygrid-day-events,
+.fc-daygrid-day-bottom {
+	min-height: 1rem !important;
+}
+
+/* ========================================================
+   FullCalendar 모든 날짜 칸 완벽한 균등 높이 (바둑판 비율 고정)
+   ======================================================== */
+
+/* 1. 캘린더 내부 바디와 테이블이 뷰포트 높이를 꽉 채우도록 설정 */
+.fc .fc-view-harness,
+.fc .fc-daygrid-body,
+.fc .fc-scrollgrid-sync-table {
+	height: 100% !important;
+	width: 100% !important;
+}
+
+/* 2. 모든 행(Row)의 높이를 균등하게 1/N로 강제 고정 */
+.fc .fc-daygrid-body tr {
+	height: 1px !important;
+	/* 브라우저가 table-cell 높이를 균등 분배하도록 유도 */
+}
+
+.fc .fc-scrollgrid-sync-table tbody tr,
+.fc .fc-daygrid-body tbody tr {
+	height: calc(100% / 5) !important;
+	/* 5주 기준 균등 분할 */
+}
+
+/* 3. 날짜 칸(td)과 내부 프레임 높이 고정 (내용이 많아도 셀이 늘어나지 않음) */
+.fc .fc-daygrid-day {
+	height: inherit !important;
+}
+
+/* 날짜 칸 내부 프레임: 상단 정렬 */
+.fc-daygrid-day-frame {
+	height: 100% !important;
+	min-height: 100% !important;
+	overflow: hidden !important;
+	display: flex !important;
+	flex-direction: column !important;
+	justify-content: flex-start !important;
+	/* 상단 정렬 */
+}
+
+/* 4. 날짜 숫자 상단 고정 */
+.fc .fc-daygrid-day-top {
+	flex-shrink: 0 !important;
+	padding-top: 2px !important;
+}
+
+/* 배지 컨테이너: 날짜 숫자 바로 밑에서 시작 */
 .badge-container {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 3px;
-	margin-top: 4px;
+	display: flex !important;
+	flex-direction: column !important;
+	align-items: center !important;
+	justify-content: flex-start !important;
+	/* 가운데 정렬 대신 위에서부터 차례로 쌓기 */
+	gap: 3px !important;
+	margin-top: 4px !important;
+	/* 날짜 숫자와의 일정한 간격 */
 	pointer-events: none !important;
+	width: 100% !important;
 }
 
+/* 6. 알약 배지 크기 및 줄 간격 최적화 */
 .pill-badge {
-	font-size: 0.68rem;
+	font-size: 0.72rem;
 	font-weight: 700;
-	padding: 2px 6px;
-	border-radius: 12px;
-	background-color: var(--primary-light);
-	color: var(--primary);
+	padding: 1px 7px;
+	border-radius: 10px;
+	color: #fff;
 	text-align: center;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	white-space: nowrap;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 	pointer-events: none !important;
+	line-height: 1.25;
+	flex-shrink: 0;
 }
 
-/* 모달 레이아웃 (Safe Area 패딩 대응) */
+.pill-badge.cat-more {
+	background-color: #94a3b8;
+	font-size: 0.68rem;
+	padding: 1px 6px;
+	margin-top: 1px;
+}
+
+/* 카테고리별 고유 색상 매칭 */
+.pill-badge.cat-휴가 { background-color: var(--vacation); }
+.pill-badge.cat-출장 { background-color: var(--business); }
+.pill-badge.cat-교육 { background-color: var(--training); }
+.pill-badge.cat-기타 { background-color: var(--etc); }
+
+/* 모달 레이아웃 및 트랜지션 */
 .modal-backdrop {
-	display: none !important;
+	display: none;
 	position: fixed;
 	inset: 0;
 	background: rgba(15, 23, 42, 0.5);
 	backdrop-filter: blur(2px);
-	display: flex;
 	align-items: flex-end;
 	justify-content: center;
 	z-index: 1000;
 	opacity: 0;
 	pointer-events: none;
-	transition: opacity 0.2s ease-out;
+	transition: opacity 0.25s ease-out;
+}
+
+.modal-backdrop.is-open {
+	display: flex;
 }
 
 .modal-backdrop.active {
-	display: flex !important;
 	opacity: 1;
 	pointer-events: auto;
 }
@@ -330,21 +410,55 @@ header {
 	gap: 16px;
 }
 
-/* 팀원 일정 리스트 */
+/* 팀원 일정 리스트 영역 (연한 배경 박스 및 스크롤바 간섭 해결) */
 .member-schedule-list {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
+	max-height: 280px;
+	overflow-y: auto;
+	background-color: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 8px 6px 8px 8px;
+	/* 우측 여백을 확보하여 스크롤바와 카드 분리 */
 }
 
+/* 커스텀 스크롤바 디자인 */
+.member-schedule-list::-webkit-scrollbar {
+	width: 5px;
+}
+
+.member-schedule-list::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.member-schedule-list::-webkit-scrollbar-thumb {
+	background-color: #cbd5e1;
+	border-radius: 10px;
+}
+
+.member-schedule-list::-webkit-scrollbar-thumb:hover {
+	background-color: #94a3b8;
+}
+
+/* 개별 일정 카드 (흰색 바탕 깔끔한 카드 형태) */
 .schedule-item {
 	display: flex;
 	flex-direction: column;
-	background: var(--bg);
+	background: var(--surface);
 	border-radius: 8px;
 	padding: 10px 12px;
 	border: 1px solid var(--border);
-	gap: 4px;
+	gap: 6px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+	transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* 수정 중인 카드 하이라이트 (테두리 변경 없이 연한 틴트 배경만 전환) */
+.schedule-item.is-editing {
+	background-color: #eef2ff !important;
+	border-color: #c7d2fe !important;
 }
 
 .schedule-meta {
@@ -391,16 +505,24 @@ header {
 	font-weight: 500;
 }
 
+/* 메모 영역 */
 .schedule-memo {
 	font-size: 0.85rem;
 	color: #334155;
 	white-space: pre-wrap;
-	word-break: break-all;
+	word-break: break-word;
+	line-height: 1.4;
+}
+
+.schedule-memo.empty {
+	color: #94a3b8;
+	font-style: italic;
+	font-size: 0.8rem;
 }
 
 .empty-state {
 	text-align: center;
-	padding: 18px 0;
+	padding: 24px 0;
 	font-size: 0.85rem;
 	color: var(--text-muted);
 }
@@ -412,6 +534,10 @@ header {
 }
 
 /* 폼 요소 및 유틸리티 */
+#schedule-form-wrapper {
+	transition: opacity 0.15s ease-out;
+}
+
 .form-group {
 	display: flex;
 	flex-direction: column;
@@ -471,7 +597,7 @@ header {
 	margin-top: 4px;
 }
 
-/* 로그인/인증 오버레이 기본 컨테이너 */
+/* 로그인/인증 오버레이 */
 #auth-overlay {
 	position: fixed;
 	inset: 0;
@@ -483,7 +609,6 @@ header {
 	padding: 20px;
 }
 
-/* 1. 인증 확인 중 화면 박스 */
 .auth-loading-box {
 	display: flex;
 	flex-direction: column;
@@ -507,7 +632,6 @@ header {
 	font-weight: 600;
 }
 
-/* 2. 로그인 입력 폼 박스 */
 .auth-box {
 	background: var(--surface);
 	border: 1px solid var(--border);
@@ -528,12 +652,11 @@ header {
 	text-align: center;
 }
 
-/* 3. 유틸리티 클래스 */
 .is-hidden {
 	display: none !important;
 }
 
-/* 로딩 스피너 애니메이션 (단일 정의) */
+/* 로딩 스피너 애니메이션 */
 @keyframes spin {
 	to {
 		transform: rotate(360deg);
