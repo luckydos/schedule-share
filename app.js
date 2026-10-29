@@ -49,6 +49,15 @@ let editingEntryId = null;
 let unsubscribeFirestore = null;
 let unsubscribeUsers = null;
 
+// 2. 모달 닫기 시 터치 관통(Ghost Click) 방지 플래그
+let isGhostClickShieldActive = false;
+function triggerTouchShield() {
+	isGhostClickShieldActive = true;
+	setTimeout(() => {
+		isGhostClickShieldActive = false;
+	}, 350);
+}
+
 // DOM 요소 캐싱
 const authOverlay = document.getElementById("auth-overlay");
 const authLoadingBox = document.getElementById("auth-loading-box");
@@ -99,10 +108,10 @@ calendar = new FullCalendar.Calendar(calendarEl, {
 	buttonText: {
 		today: "오늘"
 	},
-	height: "100%",
+	height: "auto",
 	expandRows: true,
-	fixedWeekCount: false,
-	showNonCurrentDates: false,
+	fixedWeekCount: true,
+	showNonCurrentDates: true, // 👈 1. 이전/다음 달 날짜 연한 색상으로 노출
 	selectable: false,
 	editable: false,
 	eventStartEditable: false,
@@ -119,7 +128,7 @@ calendar = new FullCalendar.Calendar(calendarEl, {
 
 calendar.render();
 
-// 🔥 원터치 인터셉트 감지기
+// 🔥 원터치 인터셉트 감지기 (터치 관통 방어막 연동)
 let clickStartX = 0;
 let clickStartY = 0;
 
@@ -129,6 +138,13 @@ calendarEl.addEventListener("pointerdown", (e) => {
 }, { capture: true, passive: true });
 
 calendarEl.addEventListener("pointerup", (e) => {
+	// 모달 닫기 터치 방어막이 활성화된 상태면 달력 조작 무시
+	if (isGhostClickShieldActive) {
+		e.stopPropagation();
+		e.preventDefault();
+		return;
+	}
+
 	if (e.target.closest(".fc-toolbar")) return;
 
 	const moveX = Math.abs(e.clientX - clickStartX);
@@ -162,7 +178,7 @@ function updateTodayButtonState() {
 	todayBtn.disabled = isCurrentMonth;
 }
 
-// --- 3. 날짜 셀 배지 렌더링 (3개 기본 노출 및 중앙 정렬) ---
+// --- 3. 날짜 셀 배지 렌더링 (모바일 화면 폭 반응형 노출) ---
 function renderDayCellBadge(date, cellEl) {
 	const y = date.getFullYear();
 	const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -182,7 +198,7 @@ function renderDayCellBadge(date, cellEl) {
 
 		const entries = Object.values(record.entries || {});
 
-		// 기본 카테고리 우선순위 정렬 집계
+		// 카테고리 우선순위 정렬 집계
 		const categories = ["휴가", "출장", "교육", "기타"];
 		const activeBadges = [];
 
@@ -193,8 +209,9 @@ function renderDayCellBadge(date, cellEl) {
 			}
 		});
 
-		// 3개(휴가, 출장, 교육 등)까지 기본 출력, 4개부터 축약(+N)
-		const MAX_VISIBLE = 3;
+		// 모바일 환경은 최대 2개, PC는 최대 3개까지 노출 후 초과분 +N 처리
+		const isMobile = window.innerWidth < 640;
+		const MAX_VISIBLE = isMobile ? 2 : 3;
 		const displayBadges = activeBadges.slice(0, MAX_VISIBLE);
 		const overflowCount = activeBadges.length - MAX_VISIBLE;
 
@@ -205,7 +222,6 @@ function renderDayCellBadge(date, cellEl) {
 			badgeContainer.appendChild(pill);
 		});
 
-		// 4개 이상일 때 +N 배지 표시
 		if (overflowCount > 0) {
 			const morePill = document.createElement("span");
 			morePill.className = "pill-badge cat-more";
@@ -335,6 +351,7 @@ function showModalWithAnimation(modalEl) {
 }
 
 function hideModalWithAnimation(modalEl, onComplete) {
+	triggerTouchShield(); // 닫히는 순간 터치 관통 방어막 가동
 	modalEl.classList.remove("active");
 	setTimeout(() => {
 		modalEl.classList.remove("is-open");
@@ -348,7 +365,6 @@ function openScheduleModal(dateStr) {
 	modalDateTitle.innerText = `${dateStr} 일정`;
 	renderModalDetail(dateStr);
 
-	// 모바일 Ghost Click 방지
 	scheduleFormWrapper.style.pointerEvents = "none";
 	setTimeout(() => {
 		scheduleFormWrapper.style.pointerEvents = "auto";
@@ -376,7 +392,6 @@ function resetScheduleForm() {
 	formActionsCreate.style.display = "flex";
 	formActionsEdit.style.display = "none";
 
-	// 목록의 모든 카드에서 수정 중 하이라이트 해제 및 버튼 복원
 	document.querySelectorAll(".schedule-item").forEach((item) => {
 		item.classList.remove("is-editing");
 		const editBtn = item.querySelector(".btn-item-edit");
@@ -395,7 +410,6 @@ function setFormToEditMode(entry) {
 	formActionsCreate.style.display = "none";
 	formActionsEdit.style.display = "flex";
 
-	// 상단 카드 목록 시각 피드백: 선택된 카드 배경 틴트 전환 및 버튼 텍스트 변경
 	document.querySelectorAll(".schedule-item").forEach((item) => {
 		const isTarget = item.getAttribute("data-entry-id") === String(entry.id);
 		item.classList.toggle("is-editing", isTarget);
@@ -438,7 +452,7 @@ function renderModalDetail(dateStr) {
 			item.setAttribute("data-entry-id", String(entry.id));
 
 			if (isMyEntry) {
-				item.style.borderColor = "#c7d2fe"; // 본인 일정은 부드러운 테두리 유지
+				item.style.borderColor = "#c7d2fe";
 			}
 
 			const headerDiv = document.createElement("div");
@@ -449,13 +463,11 @@ function renderModalDetail(dateStr) {
 			const metaDiv = document.createElement("div");
 			metaDiv.className = "schedule-meta";
 
-			// 1. 구분 배지
 			const tagSpan = document.createElement("span");
 			tagSpan.className = "tag tag-" + (entry.category || "기타");
 			tagSpan.textContent = entry.category || "기타";
 			metaDiv.appendChild(tagSpan);
 
-			// 2. 팀원 이름 (최신 닉네임 실시간 매핑)
 			const userProfile = teamUsersMap[entry.userId];
 			const latestName = (userProfile && userProfile.displayName) || entry.userName || (entry.userId ? entry.userId : "팀원");
 
@@ -464,7 +476,6 @@ function renderModalDetail(dateStr) {
 			nameSpan.textContent = latestName + (isMyEntry ? " (나)" : "");
 			metaDiv.appendChild(nameSpan);
 
-			// 3. 등록/수정 시간
 			const timeFormatted = formatTimeString(entry.updatedAt);
 			if (timeFormatted) {
 				const timeSpan = document.createElement("span");
@@ -475,7 +486,6 @@ function renderModalDetail(dateStr) {
 
 			headerDiv.appendChild(metaDiv);
 
-			// 본인 일정에만 수정/삭제 버튼 제공
 			if (isMyEntry) {
 				const actionGroup = document.createElement("div");
 				actionGroup.style.display = "flex";
@@ -508,7 +518,6 @@ function renderModalDetail(dateStr) {
 
 			item.appendChild(headerDiv);
 
-			// 메모 내용
 			const memoDiv = document.createElement("div");
 			memoDiv.className = "schedule-memo";
 			if (entry.title && entry.title.trim() !== "") {
@@ -526,7 +535,6 @@ function renderModalDetail(dateStr) {
 	}
 }
 
-// 일정 추가 및 수정 처리
 async function saveSchedule(event) {
 	if (!currentUser || !selectedDateStr) return;
 
@@ -583,7 +591,6 @@ async function saveSchedule(event) {
 	}
 }
 
-// 특정 일정 개별 삭제
 async function deleteSpecificSchedule(entryId) {
 	if (!currentUser || !selectedDateStr || !entryId) return;
 	if (!confirm("해당 일정을 삭제하시겠습니까?")) return;
@@ -615,7 +622,7 @@ btnUpdateSchedule.addEventListener("click", saveSchedule);
 btnCancelEdit.addEventListener("click", resetScheduleForm);
 modalCloseBtn.addEventListener("click", closeScheduleModal);
 
-// 모달 외부(백드롭) 클릭 시 닫기
+// 모달 외부(백드롭) 클릭 및 터치 관통 완벽 방어
 let modalMousedownTarget = null;
 scheduleModal.addEventListener("mousedown", (e) => {
 	modalMousedownTarget = e.target;
@@ -630,8 +637,10 @@ scheduleModal.addEventListener("mouseup", (e) => {
 	}
 	modalMousedownTarget = null;
 });
+
 scheduleModal.addEventListener("touchend", (e) => {
 	if (modalMousedownTarget === scheduleModal && e.target === scheduleModal) {
+		e.preventDefault(); // 👈 브라우저 가상 click 이벤트 발생 소멸
 		closeScheduleModal();
 	}
 	modalMousedownTarget = null;
@@ -676,9 +685,8 @@ function toggleCurrentPasswordField() {
 
 profNewPass.addEventListener("input", toggleCurrentPasswordField);
 
-// 설정 모달 열기
 btnProfile.addEventListener("click", () => {
-	if (!currentUser) return;
+	if (!currentUser || isGhostClickShieldActive) return;
 	profDisplayName.value = (currentUserProfile && currentUserProfile.displayName) || "";
 	profUserId.value = currentUser.email ? currentUser.email.split("@")[0] : "";
 	profNewPass.value = "";
@@ -692,7 +700,6 @@ profileModalClose.addEventListener("click", () => {
 	hideModalWithAnimation(profileModal);
 });
 
-// 설정 모달 외부 클릭 시 닫기
 let profileMousedownTarget = null;
 profileModal.addEventListener("mousedown", (e) => {
 	profileMousedownTarget = e.target;
@@ -707,14 +714,15 @@ profileModal.addEventListener("mouseup", (e) => {
 	}
 	profileMousedownTarget = null;
 });
+
 profileModal.addEventListener("touchend", (e) => {
 	if (profileMousedownTarget === profileModal && e.target === profileModal) {
+		e.preventDefault();
 		hideModalWithAnimation(profileModal);
 	}
 	profileMousedownTarget = null;
 });
 
-// 설정 저장
 btnSaveProfile.addEventListener("click", async () => {
 	const displayName = profDisplayName.value.trim();
 	const newPass = profNewPass.value;
@@ -844,6 +852,11 @@ const triggerLoginOnEnter = (event) => {
 loginEmailInput.addEventListener("keydown", triggerLoginOnEnter);
 loginPasswordInput.addEventListener("keydown", triggerLoginOnEnter);
 
-btnLogout.addEventListener("click", () => {
+btnLogout.addEventListener("click", (e) => {
+	if (isGhostClickShieldActive) {
+		e.stopPropagation();
+		e.preventDefault();
+		return;
+	}
 	signOut(auth);
 });
